@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+backend/.env
+data/cache.db
+data/sessions/
+.venv/
+*.egg-info/
+dist/
+build/
+.ruff_cache/
+.pytest_cache/
+.DS_Store
+.vercel/
+.claude/
