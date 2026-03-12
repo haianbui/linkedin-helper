@@ -74,18 +74,27 @@ async def run_search(req: SearchRequest):
     """Synchronous search - runs full pipeline, returns JSON.
     Works on serverless (no SSE, no shared state needed).
     """
+    import logging
+    import traceback
+
+    logger = logging.getLogger(__name__)
+
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    orchestrator = get_orchestrator()
-    result = await orchestrator.execute_search_sync(
-        query=req.query.strip(),
-        max_results=25,
-    )
-    # Cache results for CSV export
-    if "session_id" in result and "results" in result:
-        _session_results[result["session_id"]] = result["results"]
-    return result
+    try:
+        orchestrator = get_orchestrator()
+        result = await orchestrator.execute_search_sync(
+            query=req.query.strip(),
+            max_results=25,
+        )
+        # Cache results for CSV export
+        if "session_id" in result and "results" in result:
+            _session_results[result["session_id"]] = result["results"]
+        return result
+    except Exception as e:
+        logger.exception("Search run failed")
+        return {"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc(), "results": []}
 
 
 @router.get("/search/{session_id}/results")
