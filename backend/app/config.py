@@ -14,5 +14,12 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    def model_post_init(self, __context) -> None:
+        # Strip whitespace/newlines from API keys (Vercel env vars can have trailing newlines)
+        for field in ("anthropic_api_key", "serp_api_key", "apollo_api_key", "proxycurl_api_key", "apify_api_key"):
+            val = getattr(self, field)
+            if val:
+                object.__setattr__(self, field, val.strip())
+
 
 settings = Settings()
