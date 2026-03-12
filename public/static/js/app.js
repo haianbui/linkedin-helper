@@ -1,8 +1,6 @@
 // LinkedIn Helper - Main Application Logic
 
 const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => document.querySelectorAll(sel);
-
 let currentSessionId = null;
 let allResults = [];
 
@@ -16,6 +14,7 @@ $('#search-form').addEventListener('submit', async (e) => {
   $('#search-btn').disabled = true;
   $('#progress-panel').classList.remove('hidden');
 
+  // Try SSE first (works on local dev), fall back to sync endpoint (Vercel)
   try {
     const res = await fetch('/api/search', {
       method: 'POST',
@@ -33,20 +32,33 @@ $('#search-form').addEventListener('submit', async (e) => {
     currentSessionId = session_id;
     connectSSE(session_id, query);
   } catch (err) {
-    showError(`Connection error: ${err.message}`);
+    // If POST fails, go directly to sync mode
+    runSyncSearch(query);
   }
 });
 
-// --- SSE Connection ---
+// --- SSE Connection (local dev - real-time streaming) ---
 function connectSSE(sessionId, query) {
-  // Pass query as param so it works on serverless (no shared memory between requests)
   const evtSource = new EventSource(`/api/search/${sessionId}/stream?query=${encodeURIComponent(query)}`);
+  let gotData = false;
+  let sseTimeout = null;
+
+  // If no data within 10s, SSE is probably broken (Vercel), fall back to sync
+  sseTimeout = setTimeout(() => {
+    if (!gotData) {
+      evtSource.close();
+      runSyncSearch(query);
+    }
+  }, 10000);
 
   evtSource.addEventListener('status', (e) => {
+    gotData = true;
+    if (sseTimeout) { clearTimeout(sseTimeout); sseTimeout = null; }
     updateProgress(e.data);
   });
 
   evtSource.addEventListener('criteria', (e) => {
+    gotData = true;
     renderCriteria(JSON.parse(e.data));
   });
 
@@ -63,14 +75,68 @@ function connectSSE(sessionId, query) {
   });
 
   evtSource.addEventListener('error', (e) => {
-    // Check if it's an SSE error event with data
+    if (sseTimeout) { clearTimeout(sseTimeout); sseTimeout = null; }
+
     if (e.data) {
       showError(e.data);
+      evtSource.close();
+      return;
     }
+
+    // SSE connection dropped (Vercel timeout) - fall back to sync
     evtSource.close();
-    $('#search-btn').disabled = false;
-    $('#spinner').classList.add('hidden');
+    if (!gotData || allResults.length === 0) {
+      runSyncSearch(query);
+    } else {
+      // Got partial results, just show what we have
+      $('#search-btn').disabled = false;
+      $('#spinner').classList.add('hidden');
+    }
   });
+}
+
+// --- Sync Search (Vercel - single request/response) ---
+async function runSyncSearch(query) {
+  resetUI();
+  $('#search-btn').disabled = true;
+  $('#progress-panel').classList.remove('hidden');
+  updateProgress('Running search (this may take up to a minute)...');
+
+  try {
+    const res = await fetch('/api/search/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+      showError(err.detail || err.error || 'Search failed');
+      return;
+    }
+
+    const data = await res.json();
+
+    if (data.error) {
+      showError(data.error);
+      return;
+    }
+
+    currentSessionId = data.session_id;
+
+    if (data.criteria) {
+      renderCriteria(data.criteria);
+    }
+
+    for (const result of data.results || []) {
+      allResults.push(result);
+      appendResult(result);
+    }
+
+    onSearchComplete({ total: data.total || allResults.length });
+  } catch (err) {
+    showError(`Search failed: ${err.message}`);
+  }
 }
 
 // --- UI Helpers ---
@@ -161,11 +227,8 @@ function appendResult(result) {
     <td class="px-4 py-3 text-gray-600 text-xs">${escapeHtml(evaluation.summary || '')}</td>
   `;
 
-  // Click to expand details
   row.addEventListener('click', () => toggleDetails(result, row));
   $('#results-body').appendChild(row);
-
-  // Update count
   $('#results-count').textContent = `${allResults.length} results`;
 }
 

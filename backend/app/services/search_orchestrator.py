@@ -155,3 +155,58 @@ class SearchOrchestrator:
             session.status = SearchStatus.FAILED
             session.error_message = str(e)
             yield SSEEvent(event="error", data=f"Search failed: {e}")
+
+    async def execute_search_sync(
+        self,
+        query: str,
+        max_results: int = 25,
+        max_strategies: int = 2,
+    ) -> dict:
+        """Run the full pipeline synchronously and return JSON.
+        Optimized for serverless with shorter timeouts.
+        """
+        session = SearchSession(natural_query=query)
+
+        # Phase 1: Decompose
+        criteria = await self.decomposer.decompose(query)
+        # Limit strategies to stay within timeout
+        if len(criteria.search_strategies) > max_strategies:
+            criteria.search_strategies = criteria.search_strategies[:max_strategies]
+
+        # Phase 2: Search
+        providers = await self.registry.get_available_search_providers()
+        if not providers:
+            return {"error": "No search providers configured", "results": []}
+
+        raw_profiles: list[ProfileResult] = []
+        for provider in providers:
+            try:
+                async for profile in provider.search(criteria, max_results=max_results):
+                    raw_profiles.append(profile)
+            except Exception as e:
+                logger.error("Provider %s failed: %s", provider.name, e)
+
+        if not raw_profiles:
+            return {
+                "error": "No profiles found. Try a broader query.",
+                "results": [],
+                "criteria": criteria.model_dump(),
+            }
+
+        # Phase 3: Deduplicate
+        unique = _deduplicate(raw_profiles)
+
+        # Phase 4: Evaluate (concurrently, larger batches for fewer API calls)
+        evaluated = await self.evaluator.evaluate_batch(
+            profiles=unique,
+            criteria=criteria,
+            original_query=query,
+            batch_size=15,
+        )
+
+        return {
+            "session_id": session.id,
+            "criteria": criteria.model_dump(),
+            "results": [ep.model_dump() for ep in evaluated],
+            "total": len(evaluated),
+        }

@@ -69,6 +69,25 @@ async def stream_search(session_id: str, query: str = Query(default="")):
     return EventSourceResponse(event_generator())
 
 
+@router.post("/search/run")
+async def run_search(req: SearchRequest):
+    """Synchronous search - runs full pipeline, returns JSON.
+    Works on serverless (no SSE, no shared state needed).
+    """
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    orchestrator = get_orchestrator()
+    result = await orchestrator.execute_search_sync(
+        query=req.query.strip(),
+        max_results=25,
+    )
+    # Cache results for CSV export
+    if "session_id" in result and "results" in result:
+        _session_results[result["session_id"]] = result["results"]
+    return result
+
+
 @router.get("/search/{session_id}/results")
 async def get_results(session_id: str):
     session = _sessions.get(session_id)

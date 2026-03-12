@@ -62,19 +62,37 @@ class ProfileEvaluator:
         profiles: list[ProfileResult],
         criteria: SearchCriteria,
         original_query: str,
+        batch_size: int = 10,
     ) -> list[EvaluatedProfile]:
         if not profiles:
             return []
 
-        results: list[EvaluatedProfile] = []
-        batch_size = 10
+        import asyncio
 
-        for i in range(0, len(profiles), batch_size):
-            batch = profiles[i : i + batch_size]
-            evaluated = await self._evaluate_chunk(batch, criteria, original_query)
-            for rank_offset, ep in enumerate(evaluated):
-                ep.rank = i + rank_offset + 1
-                results.append(ep)
+        # Run all batches concurrently for speed
+        batches = [
+            profiles[i : i + batch_size]
+            for i in range(0, len(profiles), batch_size)
+        ]
+        tasks = [
+            self._evaluate_chunk(batch, criteria, original_query)
+            for batch in batches
+        ]
+        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        results: list[EvaluatedProfile] = []
+        for batch, batch_result in zip(batches, batch_results):
+            if isinstance(batch_result, Exception):
+                logger.error("Evaluation batch failed: %s", batch_result)
+                for p in batch:
+                    results.append(
+                        EvaluatedProfile(
+                            profile=p,
+                            evaluation=MatchExplanation(match_score=0, summary="Evaluation failed"),
+                        )
+                    )
+            else:
+                results.extend(batch_result)
 
         # Sort by score descending and reassign ranks
         results.sort(key=lambda x: x.evaluation.match_score, reverse=True)
