@@ -94,7 +94,7 @@ async def run_search(req: SearchRequest):
         return result
     except Exception as e:
         logger.exception("Search run failed")
-        return {"error": f"{type(e).__name__}: {e}", "traceback": traceback.format_exc(), "results": []}
+        return {"error": f"Search failed: {e}", "results": []}
 
 
 @router.get("/search/{session_id}/results")
