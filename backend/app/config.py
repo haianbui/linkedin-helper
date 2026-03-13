@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     claude_model: str = "claude-sonnet-4-20250514"
     max_search_results: int = 100
     cache_db_path: str = "data/cache.db"
+    postgres_url: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

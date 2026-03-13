@@ -59,6 +59,27 @@
 }
 .btn-primary:active:not(:disabled) { transform: translateY(0); }
 
+/* ===== Share Button ===== */
+.btn-share {
+  background-color: var(--primary);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition);
+}
+.btn-share:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+.btn-share-copied {
+  background-color: #059669 !important;
+}
+
 .btn-export {
   background-color: #059669;
   color: white;

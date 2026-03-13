@@ -35,7 +35,7 @@ def get_registry() -> ProviderRegistry:
 def get_database() -> Database:
     global _database
     if _database is None:
-        _database = Database()
+        _database = Database(database_url=settings.postgres_url or None)
     return _database
 
 

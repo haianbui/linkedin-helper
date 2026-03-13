@@ -17,7 +17,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="/static/css/style.css?v=3">
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
 </head>
 <body class="bg-gray-50 min-h-screen font-sans antialiased">
 
@@ -91,7 +91,15 @@
     <div id="results-panel" class="hidden">
       <div class="flex justify-between items-center mb-4">
         <h2 id="results-count" class="text-lg font-semibold text-gray-900"></h2>
-        <button id="export-btn" class="btn-export">Download CSV</button>
+        <div class="flex items-center gap-2">
+          <button id="share-btn" class="btn-share hidden" onclick="copyShareLink()">
+            <svg class="w-4 h-4 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+            </svg>
+            Copy Link
+          </button>
+          <button id="export-btn" class="btn-export">Download CSV</button>
+        </div>
       </div>
 
       <div class="card overflow-hidden !p-0">
@@ -115,6 +123,6 @@
     </div>
   </main>
 
-  <script src="/static/js/app.js?v=3"></script>
+  <script src="/static/js/app.js?v=4"></script>
 </body>
 </html>

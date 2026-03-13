@@ -18,6 +18,7 @@
     { "src": "/api/(.*)", "dest": "/api/index.py" },
     { "src": "/static/(.*)", "dest": "/public/static/$1" },
     { "src": "^/$", "dest": "/public/index.html" },
+    { "src": "^/s/.*", "dest": "/public/index.html" },
     { "handle": "filesystem" }
   ]
 }

@@ -6,10 +6,18 @@ let allResults = [];
 let currentDimensions = [];
 
 // --- Init ---
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => loadHistory());
-} else {
+function initApp() {
+  const shareMatch = window.location.pathname.match(/^\/s\/([a-f0-9]+)$/i);
+  if (shareMatch) {
+    loadSavedResults(shareMatch[1]);
+  }
   loadHistory();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
 }
 
 // --- Search Form ---
@@ -335,6 +343,11 @@ function onSearchComplete(summary) {
   $('#progress-text').textContent = `Search complete! Found ${summary.total} results.`;
   $('#search-btn').disabled = false;
   $('#results-count').textContent = `${summary.total} results`;
+  // Update URL for sharing
+  if (currentSessionId) {
+    history.pushState({ queryId: currentSessionId }, '', `/s/${currentSessionId}`);
+  }
+  showShareButton();
   loadHistory(); // refresh history list
 }
 
@@ -437,10 +450,47 @@ async function loadSavedResults(queryId) {
       appendResult(result);
     }
     onSearchComplete({ total: data.results?.length || 0 });
+    // Update URL for sharing
+    history.pushState({ queryId: queryId }, '', `/s/${queryId}`);
+    showShareButton();
   } catch (e) {
     showError(e.message);
   }
 }
+
+// --- Share Button ---
+function showShareButton() {
+  const btn = $('#share-btn');
+  if (btn) {
+    btn.classList.remove('hidden');
+  }
+}
+
+function copyShareLink() {
+  const url = window.location.href;
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = $('#share-btn');
+    const original = btn.innerHTML;
+    btn.innerHTML = `<svg class="w-4 h-4 inline -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Copied!`;
+    btn.classList.add('btn-share-copied');
+    setTimeout(() => {
+      btn.innerHTML = original;
+      btn.classList.remove('btn-share-copied');
+    }, 2000);
+  });
+}
+
+// Handle browser back/forward
+window.addEventListener('popstate', (e) => {
+  if (e.state?.queryId) {
+    loadSavedResults(e.state.queryId);
+  } else {
+    // Back to home
+    resetUI();
+    $('#history-panel').classList.remove('hidden');
+    loadHistory();
+  }
+});
 
 // --- CSV Export ---
 $('#export-btn')?.addEventListener('click', () => {
