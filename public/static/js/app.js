@@ -5,6 +5,36 @@ let currentSessionId = null;
 let allResults = [];
 let currentDimensions = [];
 
+// --- Auth ---
+function getApiKey() {
+  return localStorage.getItem('app_secret') || '';
+}
+
+function authHeaders() {
+  const key = getApiKey();
+  return key ? { 'X-API-Key': key } : {};
+}
+
+function showAuthPrompt() {
+  const secret = prompt('Enter access key:');
+  if (secret) {
+    localStorage.setItem('app_secret', secret.trim());
+    location.reload();
+  }
+}
+
+// --- URL sanitization (XSS prevention) ---
+function sanitizeUrl(url) {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      return parsed.href;
+    }
+  } catch (e) {}
+  return '';
+}
+
 // --- Init ---
 function initApp() {
   const shareMatch = window.location.pathname.match(/^\/s\/([a-f0-9]+)$/i);
@@ -35,10 +65,11 @@ $('#search-form').addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ query }),
     });
 
+    if (res.status === 401) { showAuthPrompt(); return; }
     if (!res.ok) {
       const err = await res.json();
       showError(err.detail || 'Failed to start search');
@@ -125,10 +156,11 @@ async function runSyncSearch(query) {
   try {
     const res = await fetch('/api/search/run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ query }),
     });
 
+    if (res.status === 401) { showAuthPrompt(); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
       showError(err.detail || err.error || 'Search failed');
@@ -263,8 +295,8 @@ function appendResult(result) {
     <td class="px-4 py-3 text-gray-500">${result.rank}</td>
     <td class="px-4 py-3">
       <div class="font-medium text-gray-900">
-        ${profile.linkedin_url
-          ? `<a href="${profile.linkedin_url}" target="_blank" class="profile-link">${escapeHtml(profile.full_name)}</a>`
+        ${sanitizeUrl(profile.linkedin_url)
+          ? `<a href="${sanitizeUrl(profile.linkedin_url)}" target="_blank" rel="noopener noreferrer" class="profile-link">${escapeHtml(profile.full_name)}</a>`
           : escapeHtml(profile.full_name)
         }
       </div>
@@ -383,7 +415,7 @@ function sortResults(key) {
 // --- Search History ---
 async function loadHistory() {
   try {
-    const res = await fetch('/api/sessions', { cache: 'no-store' });
+    const res = await fetch('/api/sessions', { cache: 'no-store', headers: authHeaders() });
     if (!res.ok) return;
     const sessions = await res.json();
     renderHistory(sessions);

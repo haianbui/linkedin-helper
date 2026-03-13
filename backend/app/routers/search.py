@@ -4,12 +4,14 @@ import csv
 import io
 import json
 import logging
+import re
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from app.config import settings
 from app.dependencies import get_database, get_orchestrator
 from app.models.search import SearchSession
 
@@ -21,10 +23,37 @@ router = APIRouter(tags=["search"])
 _sessions: dict[str, SearchSession] = {}
 _session_results: dict[str, list[dict]] = {}
 
+_SESSION_ID_RE = re.compile(r"^[a-f0-9]{12}$")
 
+
+# --- Auth helper ---
+def _require_auth(x_api_key: str | None) -> None:
+    """Raise 401 if APP_SECRET is configured and key doesn't match."""
+    secret = settings.app_secret
+    if not secret:
+        return  # No secret set = open access (local dev)
+    if not x_api_key or x_api_key != secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def _validate_session_id(session_id: str) -> None:
+    """Reject session IDs that don't match expected hex format."""
+    if not _SESSION_ID_RE.match(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+
+
+def _csv_safe(value) -> str:
+    """Prevent CSV injection by prefixing formula characters."""
+    s = str(value) if value is not None else ""
+    if s and s[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + s
+    return s
+
+
+# --- Models ---
 class SearchRequest(BaseModel):
-    query: str
-    max_results: int = 100
+    query: str = Field(..., min_length=1, max_length=1000)
+    max_results: int = Field(default=100, ge=1, le=200)
 
 
 class SearchResponse(BaseModel):
@@ -32,8 +61,15 @@ class SearchResponse(BaseModel):
     status: str
 
 
+# --- Search Endpoints (protected) ---
+
 @router.post("/search")
-async def start_search(req: SearchRequest) -> SearchResponse:
+async def start_search(
+    req: SearchRequest,
+    x_api_key: str | None = Header(default=None),
+) -> SearchResponse:
+    _require_auth(x_api_key)
+
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
@@ -45,11 +81,17 @@ async def start_search(req: SearchRequest) -> SearchResponse:
 
 
 @router.get("/search/{session_id}/stream")
-async def stream_search(session_id: str, query: str = Query(default="")):
+async def stream_search(
+    session_id: str,
+    query: str = Query(default=""),
+    x_api_key: str | None = Header(default=None),
+):
     """SSE stream endpoint. Works two ways:
     - With in-memory session (local dev): looks up session by ID
     - With query param (serverless): creates session on the fly
     """
+    _require_auth(x_api_key)
+
     session = _sessions.get(session_id)
     if not session:
         if not query:
@@ -70,8 +112,13 @@ async def stream_search(session_id: str, query: str = Query(default="")):
 
 
 @router.post("/search/run")
-async def run_search(req: SearchRequest):
+async def run_search(
+    req: SearchRequest,
+    x_api_key: str | None = Header(default=None),
+):
     """Synchronous search - runs full pipeline, returns JSON."""
+    _require_auth(x_api_key)
+
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
@@ -86,12 +133,16 @@ async def run_search(req: SearchRequest):
         return result
     except Exception as e:
         logger.exception("Search run failed")
-        return {"error": f"Search failed: {e}", "results": []}
+        return {"error": "Search failed. Please try again.", "results": []}
 
+
+# --- Session Listing (protected) ---
 
 @router.get("/sessions")
-async def list_sessions():
+async def list_sessions(x_api_key: str | None = Header(default=None)):
     """List recent searches from DB, fallback to in-memory."""
+    _require_auth(x_api_key)
+
     db = get_database()
     queries = await db.list_queries(limit=20)
     if queries:
@@ -118,9 +169,12 @@ async def list_sessions():
     ]
 
 
+# --- Public Endpoints (shared links work without auth) ---
+
 @router.get("/sessions/{query_id}/results")
 async def get_saved_results(query_id: str):
-    """Load saved results for a past query from DB."""
+    """Load saved results for a past query from DB. Public for shared links."""
+    _validate_session_id(query_id)
     db = get_database()
     query = await db.get_query(query_id)
     if not query:
@@ -147,6 +201,7 @@ async def get_results(session_id: str):
 @router.get("/export/{session_id}/csv")
 async def export_csv(session_id: str):
     """Export results as CSV. Try DB first, fallback to in-memory."""
+    _validate_session_id(session_id)
     db = get_database()
     query_data = await db.get_query(session_id)
 
@@ -179,17 +234,17 @@ async def export_csv(session_id: str):
 
         writer.writerow([
             r.get("rank", ""),
-            profile.get("full_name", ""),
+            _csv_safe(profile.get("full_name", "")),
             profile.get("linkedin_url", ""),
-            profile.get("current_title", ""),
-            profile.get("current_company", ""),
-            profile.get("location", ""),
+            _csv_safe(profile.get("current_title", "")),
+            _csv_safe(profile.get("current_company", "")),
+            _csv_safe(profile.get("location", "")),
             evaluation.get("match_score", ""),
             sub_scores[0].get("score", "") if len(sub_scores) > 0 else "",
             sub_scores[1].get("score", "") if len(sub_scores) > 1 else "",
             sub_scores[2].get("score", "") if len(sub_scores) > 2 else "",
-            evaluation.get("summary", ""),
-            profile.get("headline", ""),
+            _csv_safe(evaluation.get("summary", "")),
+            _csv_safe(profile.get("headline", "")),
         ])
 
     output.seek(0)
