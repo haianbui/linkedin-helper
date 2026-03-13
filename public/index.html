@@ -3,42 +3,60 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LinkedIn Helper - AI-Powered People Search</title>
+  <title>Better LinkedIn Search - AI-Powered People Discovery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body class="bg-gray-50 min-h-screen">
-  <!-- Header -->
-  <header class="bg-white shadow-sm border-b">
-    <div class="max-w-6xl mx-auto px-4 py-5">
-      <h1 class="text-2xl font-bold text-gray-900">LinkedIn Helper</h1>
-      <p class="text-sm text-gray-500 mt-1">Search for people using natural language, powered by AI</p>
+<body class="bg-gray-50 min-h-screen font-sans antialiased">
+
+  <!-- Hero with Search -->
+  <header class="hero-gradient">
+    <div class="max-w-6xl mx-auto px-4 pt-10 pb-12">
+      <div class="flex items-center gap-3 mb-1">
+        <svg class="w-8 h-8 text-white/90" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128H9m6 0a5.972 5.972 0 0 0-.786-3.07M9 19.128v-.003c0-1.113.285-2.16.786-3.07M9 19.128H3.375a4.125 4.125 0 0 1-3.247-6.588M6.375 13.5a9.337 9.337 0 0 1 4.121.952M15 19.128a5.972 5.972 0 0 1-3-3.07m0 0a5.972 5.972 0 0 0-3 3.07M12 16.058V12m0 0V7.5m0 4.5h4.5m-4.5 0H7.5" />
+        </svg>
+        <h1 class="text-3xl font-extrabold text-white tracking-tight">Better LinkedIn Search</h1>
+      </div>
+      <p class="text-indigo-100 text-base ml-11 tracking-wide">Find the right people using natural language, powered by AI</p>
+
+      <div class="search-card mt-8">
+        <form id="search-form" class="flex flex-col sm:flex-row gap-3">
+          <input
+            type="text"
+            id="query-input"
+            class="flex-1 rounded-xl border-0 shadow-sm focus:ring-2 focus:ring-indigo-400 text-base p-4 bg-white/80 backdrop-blur placeholder-gray-400"
+            placeholder='e.g. "Product managers in Vietnam with AI experience who have published AI apps"'
+            autocomplete="off"
+          >
+          <button
+            type="submit"
+            id="search-btn"
+            class="btn-primary px-8 py-4 rounded-xl font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Search
+          </button>
+        </form>
+      </div>
     </div>
   </header>
 
   <main class="max-w-6xl mx-auto px-4 py-8">
-    <!-- Search Section -->
-    <div class="bg-white rounded-lg shadow p-6 mb-6">
-      <form id="search-form" class="flex gap-3">
-        <input
-          type="text"
-          id="query-input"
-          class="flex-1 rounded-lg border border-gray-300 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base p-4"
-          placeholder='e.g. "Product managers in Vietnam with AI experience who have published AI apps"'
-          autocomplete="off"
-        >
-        <button
-          type="submit"
-          id="search-btn"
-          class="bg-blue-600 text-white px-8 py-4 rounded-lg hover:bg-blue-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Search
-        </button>
-      </form>
-    </div>
 
     <!-- Search History -->
-    <div id="history-panel" class="bg-white rounded-lg shadow p-6 mb-6">
+    <div id="history-panel" class="card mb-6">
       <h3 class="text-lg font-semibold text-gray-900 mb-3">Recent Searches</h3>
       <div id="history-list" class="space-y-2">
         <p class="text-sm text-gray-400">Loading...</p>
@@ -46,16 +64,16 @@
     </div>
 
     <!-- Parsed Criteria Panel -->
-    <div id="criteria-panel" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-      <h3 class="text-sm font-semibold text-blue-800 mb-2">AI parsed your query as:</h3>
-      <div id="criteria-content" class="text-sm text-blue-700 space-y-1"></div>
+    <div id="criteria-panel" class="hidden bg-indigo-50 border border-indigo-200 rounded-xl p-5 mb-6">
+      <h3 class="text-sm font-semibold text-indigo-800 mb-3">AI parsed your query as:</h3>
+      <div id="criteria-content" class="space-y-2"></div>
     </div>
 
     <!-- Progress Panel -->
     <div id="progress-panel" class="hidden mb-6">
-      <div class="bg-white rounded-lg shadow p-4">
+      <div class="card">
         <div class="flex items-center gap-3 mb-3">
-          <div id="spinner" class="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+          <div id="spinner" class="spinner"></div>
           <span id="progress-text" class="text-sm text-gray-600">Starting search...</span>
         </div>
         <div id="progress-log" class="text-xs text-gray-400 space-y-1 max-h-32 overflow-y-auto"></div>
@@ -64,7 +82,7 @@
 
     <!-- Error Panel -->
     <div id="error-panel" class="hidden mb-6">
-      <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4">
         <p id="error-text" class="text-sm text-red-700"></p>
       </div>
     </div>
@@ -73,17 +91,12 @@
     <div id="results-panel" class="hidden">
       <div class="flex justify-between items-center mb-4">
         <h2 id="results-count" class="text-lg font-semibold text-gray-900"></h2>
-        <button
-          id="export-btn"
-          class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 text-sm font-medium transition-colors"
-        >
-          Download CSV
-        </button>
+        <button id="export-btn" class="btn-export">Download CSV</button>
       </div>
 
-      <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="card overflow-hidden !p-0">
         <table class="w-full text-sm">
-          <thead class="bg-gray-50 border-b">
+          <thead class="bg-gray-50/80 border-b">
             <tr>
               <th class="px-4 py-3 text-left font-medium text-gray-600 w-12">#</th>
               <th class="px-4 py-3 text-left font-medium text-gray-600">Name</th>
@@ -102,6 +115,6 @@
     </div>
   </main>
 
-  <script src="/static/js/app.js?v=2"></script>
+  <script src="/static/js/app.js?v=3"></script>
 </body>
 </html>

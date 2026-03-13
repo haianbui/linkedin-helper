@@ -1,4 +1,4 @@
-// LinkedIn Helper - Main Application Logic
+// Better LinkedIn Search - Main Application Logic
 
 const $ = (sel) => document.querySelector(sel);
 let currentSessionId = null;
@@ -160,10 +160,10 @@ async function runSyncSearch(query) {
 function resetUI() {
   allResults = [];
   currentDimensions = [];
-  $('#criteria-panel').classList.add('hidden');
-  $('#progress-panel').classList.add('hidden');
-  $('#error-panel').classList.add('hidden');
-  $('#results-panel').classList.add('hidden');
+  ['#criteria-panel', '#progress-panel', '#error-panel', '#results-panel'].forEach(sel => {
+    $(sel).classList.add('hidden');
+    $(sel).classList.remove('panel-enter');
+  });
   $('#results-body').innerHTML = '';
   $('#progress-log').innerHTML = '';
   $('#spinner').classList.remove('hidden');
@@ -196,25 +196,29 @@ function renderCriteria(criteria) {
   const panel = $('#criteria-panel');
   const content = $('#criteria-content');
   panel.classList.remove('hidden');
+  panel.classList.add('panel-enter');
+
+  const chipList = (items) => items.map(t => `<span class="criteria-chip">${escapeHtml(t)}</span>`).join('');
+  const label = (text) => `<span class="text-xs font-semibold text-indigo-800 uppercase tracking-wider mr-2">${text}</span>`;
 
   const parts = [];
   if (criteria.job_titles?.length) {
-    parts.push(`<strong>Titles:</strong> ${criteria.job_titles.join(', ')}`);
+    parts.push(`<div class="flex flex-wrap gap-1.5 items-center">${label('Titles')}${chipList(criteria.job_titles)}</div>`);
   }
   if (criteria.locations?.length) {
-    parts.push(`<strong>Locations:</strong> ${criteria.locations.join(', ')}`);
+    parts.push(`<div class="flex flex-wrap gap-1.5 items-center">${label('Locations')}${chipList(criteria.locations)}</div>`);
   }
   if (criteria.keywords?.length) {
-    parts.push(`<strong>Keywords:</strong> ${criteria.keywords.join(', ')}`);
+    parts.push(`<div class="flex flex-wrap gap-1.5 items-center">${label('Keywords')}${chipList(criteria.keywords)}</div>`);
   }
   if (criteria.experience_requirements?.length) {
-    parts.push(`<strong>Experience:</strong> ${criteria.experience_requirements.join('; ')}`);
+    parts.push(`<div class="flex flex-wrap gap-1.5 items-center">${label('Experience')}${chipList(criteria.experience_requirements)}</div>`);
   }
   if (criteria.semantic_intent) {
-    parts.push(`<strong>Looking for:</strong> ${criteria.semantic_intent}`);
+    parts.push(`<div class="flex flex-wrap gap-1.5 items-center">${label('Looking for')}<span class="text-sm text-indigo-700">${escapeHtml(criteria.semantic_intent)}</span></div>`);
   }
 
-  content.innerHTML = parts.map(p => `<div>${p}</div>`).join('');
+  content.innerHTML = parts.join('');
 }
 
 function scoreClass(score) {
@@ -225,12 +229,15 @@ function scoreClass(score) {
 
 function scoreBadge(score) {
   if (typeof score !== 'number') return '<span class="text-gray-300">-</span>';
-  return `<span class="inline-block px-2 py-1 rounded text-xs font-semibold ${scoreClass(score)}">${score}</span>`;
+  return `<span class="${scoreClass(score)}">${score}</span>`;
 }
 
 function appendResult(result) {
   const panel = $('#results-panel');
-  panel.classList.remove('hidden');
+  if (panel.classList.contains('hidden')) {
+    panel.classList.remove('hidden');
+    panel.classList.add('panel-enter');
+  }
 
   const profile = result.profile;
   const evaluation = result.evaluation;
@@ -249,7 +256,7 @@ function appendResult(result) {
     <td class="px-4 py-3">
       <div class="font-medium text-gray-900">
         ${profile.linkedin_url
-          ? `<a href="${profile.linkedin_url}" target="_blank" class="text-blue-600 hover:underline">${escapeHtml(profile.full_name)}</a>`
+          ? `<a href="${profile.linkedin_url}" target="_blank" class="profile-link">${escapeHtml(profile.full_name)}</a>`
           : escapeHtml(profile.full_name)
         }
       </div>
@@ -384,13 +391,12 @@ function renderHistory(sessions) {
   }
 
   list.innerHTML = sessions.map(s => `
-    <div class="flex justify-between items-center p-3 rounded-lg hover:bg-gray-50 cursor-pointer border border-gray-100 transition-colors"
-         data-query-id="${s.id}">
+    <div class="history-item flex justify-between items-center" data-query-id="${s.id}">
       <div>
         <div class="text-sm font-medium text-gray-800">${escapeHtml(s.query || s.natural_query || '')}</div>
         <div class="text-xs text-gray-400">${new Date(s.created_at).toLocaleDateString()} - ${s.result_count || 0} results</div>
       </div>
-      <span class="text-xs px-2 py-1 rounded ${s.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.status}</span>
+      <span class="text-xs px-2 py-1 rounded-full ${s.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${s.status}</span>
     </div>
   `).join('');
 
