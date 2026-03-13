@@ -31,7 +31,8 @@ Return a JSON object with these fields:
       "google_dork": "site:linkedin.com/in query string"
     }
   ],
-  "semantic_intent": "one-paragraph description of the ideal candidate"
+  "semantic_intent": "one-paragraph description of the ideal candidate",
+  "scoring_dimensions": ["Dimension 1", "Dimension 2", "Dimension 3"]
 }
 
 Guidelines:
@@ -41,6 +42,10 @@ Guidelines:
 - Google dork format: site:linkedin.com/in "exact phrase" keyword1 OR keyword2
 - Keep boolean_logic clear: explain which criteria are AND vs OR
 - semantic_intent should capture the full nuance of what the user is looking for
+- scoring_dimensions: Choose exactly 3 scoring dimensions most relevant to THIS specific query. \
+These are the 3 most important axes for evaluating candidates. Keep names short (2-3 words). \
+Examples: "Role Fit", "Location Match", "AI Experience", "Seniority Level", "Company Prestige", \
+"Technical Depth", "Domain Expertise", "Leadership Experience", "Industry Relevance"
 """
 
 
@@ -73,10 +78,16 @@ class QueryDecomposer:
             raise ValueError("Failed to parse search criteria from LLM response")
 
         criteria = SearchCriteria.model_validate(data)
+
+        # Ensure exactly 3 scoring dimensions
+        if len(criteria.scoring_dimensions) != 3:
+            criteria.scoring_dimensions = ["Overall Fit", "Experience Match", "Criteria Alignment"]
+
         logger.info(
-            "Decomposed into %d titles, %d locations, %d strategies",
+            "Decomposed into %d titles, %d locations, %d strategies, dimensions: %s",
             len(criteria.job_titles),
             len(criteria.locations),
             len(criteria.search_strategies),
+            criteria.scoring_dimensions,
         )
         return criteria

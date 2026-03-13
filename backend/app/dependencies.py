@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import anthropic
 
+from app.cache.database import Database
 from app.config import settings
 from app.providers.registry import ProviderRegistry
 from app.providers.serp import SerpProvider
@@ -13,6 +14,7 @@ from app.services.search_orchestrator import SearchOrchestrator
 _claude_client: anthropic.AsyncAnthropic | None = None
 _registry: ProviderRegistry | None = None
 _orchestrator: SearchOrchestrator | None = None
+_database: Database | None = None
 
 
 def get_claude_client() -> anthropic.AsyncAnthropic:
@@ -30,6 +32,13 @@ def get_registry() -> ProviderRegistry:
     return _registry
 
 
+def get_database() -> Database:
+    global _database
+    if _database is None:
+        _database = Database()
+    return _database
+
+
 def get_orchestrator() -> SearchOrchestrator:
     global _orchestrator
     if _orchestrator is None:
@@ -38,5 +47,6 @@ def get_orchestrator() -> SearchOrchestrator:
             decomposer=QueryDecomposer(client),
             evaluator=ProfileEvaluator(client),
             registry=get_registry(),
+            database=get_database(),
         )
     return _orchestrator

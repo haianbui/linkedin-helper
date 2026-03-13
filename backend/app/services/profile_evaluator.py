@@ -6,7 +6,7 @@ import logging
 import anthropic
 
 from app.config import settings
-from app.models.evaluation import EvaluatedProfile, MatchExplanation
+from app.models.evaluation import EvaluatedProfile, MatchExplanation, SubScore
 from app.models.profile import ProfileResult
 from app.models.search import SearchCriteria
 
@@ -16,7 +16,7 @@ SYSTEM_PROMPT = """\
 You are evaluating LinkedIn profiles against a user's search criteria.
 
 For each profile, provide a JSON object with:
-- match_score: 0-100 (how well they match the search intent)
+- sub_scores: an object with exactly 3 keys (the scoring dimensions provided), each mapping to a score 0-100
 - match_reasons: list of specific reasons they match
 - concerns: list of reasons they might not be a perfect match
 - summary: 1-2 sentence explanation
@@ -24,12 +24,12 @@ For each profile, provide a JSON object with:
 Return a JSON array with one object per profile, in the same order as provided.
 Return ONLY valid JSON (no markdown fences).
 
-Score guidelines:
-- 90-100: Near-perfect match on all criteria
-- 70-89: Strong match, meets most criteria
-- 50-69: Partial match, meets some key criteria
-- 30-49: Weak match, tangential relevance
-- 0-29: Poor match, does not fit the criteria
+Score guidelines (apply to each dimension independently):
+- 90-100: Near-perfect fit on this dimension
+- 70-89: Strong fit
+- 50-69: Partial fit
+- 30-49: Weak fit
+- 0-29: Poor fit
 """
 
 
@@ -111,8 +111,14 @@ class ProfileEvaluator:
             f"[Profile {i + 1}]\n{_format_profile(p)}" for i, p in enumerate(profiles)
         )
 
+        dimensions = criteria.scoring_dimensions or ["Overall Fit", "Experience Match", "Criteria Alignment"]
+
         user_message = (
             f"Original search query: {original_query}\n\n"
+            f"Scoring dimensions (score each 0-100):\n"
+            f"1. {dimensions[0]}\n"
+            f"2. {dimensions[1]}\n"
+            f"3. {dimensions[2]}\n\n"
             f"Search criteria:\n{criteria.model_dump_json(indent=2)}\n\n"
             f"Profiles to evaluate ({len(profiles)} total):\n\n{profiles_text}"
         )
@@ -134,7 +140,6 @@ class ProfileEvaluator:
             evaluations = json.loads(raw_text)
         except json.JSONDecodeError:
             logger.error("Failed to parse evaluation response: %s", raw_text[:200])
-            # Return profiles with zero scores
             return [
                 EvaluatedProfile(
                     profile=p,
@@ -149,7 +154,19 @@ class ProfileEvaluator:
         results = []
         for profile, eval_data in zip(profiles, evaluations):
             try:
-                explanation = MatchExplanation.model_validate(eval_data)
+                sub_scores_raw = eval_data.get("sub_scores", {})
+                sub_scores = [
+                    SubScore(name=dim, score=max(0, min(100, int(sub_scores_raw.get(dim, 0)))))
+                    for dim in dimensions
+                ]
+                match_score = round(sum(s.score for s in sub_scores) / max(len(sub_scores), 1))
+                explanation = MatchExplanation(
+                    match_score=match_score,
+                    sub_scores=sub_scores,
+                    match_reasons=eval_data.get("match_reasons", []),
+                    concerns=eval_data.get("concerns", []),
+                    summary=eval_data.get("summary", ""),
+                )
             except Exception:
                 explanation = MatchExplanation(match_score=0, summary="Evaluation parse error")
             results.append(EvaluatedProfile(profile=profile, evaluation=explanation))

@@ -4,6 +4,7 @@ __pycache__/
 backend/.env
 data/cache.db
 data/sessions/
+backend/data/
 .venv/
 *.egg-info/
 dist/

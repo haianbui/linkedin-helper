@@ -37,6 +37,14 @@
       </form>
     </div>
 
+    <!-- Search History -->
+    <div id="history-panel" class="bg-white rounded-lg shadow p-6 mb-6">
+      <h3 class="text-lg font-semibold text-gray-900 mb-3">Recent Searches</h3>
+      <div id="history-list" class="space-y-2">
+        <p class="text-sm text-gray-400">Loading...</p>
+      </div>
+    </div>
+
     <!-- Parsed Criteria Panel -->
     <div id="criteria-panel" class="hidden bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
       <h3 class="text-sm font-semibold text-blue-800 mb-2">AI parsed your query as:</h3>
@@ -81,7 +89,10 @@
               <th class="px-4 py-3 text-left font-medium text-gray-600">Name</th>
               <th class="px-4 py-3 text-left font-medium text-gray-600">Title / Company</th>
               <th class="px-4 py-3 text-left font-medium text-gray-600">Location</th>
-              <th class="px-4 py-3 text-left font-medium text-gray-600 w-20">Score</th>
+              <th class="px-4 py-3 text-left font-medium text-gray-600 w-16 sortable" data-sort="overall">Score</th>
+              <th id="dim-1-header" class="px-4 py-3 text-left font-medium text-gray-600 w-16 sortable" data-sort="dim1"></th>
+              <th id="dim-2-header" class="px-4 py-3 text-left font-medium text-gray-600 w-16 sortable" data-sort="dim2"></th>
+              <th id="dim-3-header" class="px-4 py-3 text-left font-medium text-gray-600 w-16 sortable" data-sort="dim3"></th>
               <th class="px-4 py-3 text-left font-medium text-gray-600">Match Summary</th>
             </tr>
           </thead>
@@ -91,6 +102,6 @@
     </div>
   </main>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=2"></script>
 </body>
 </html>

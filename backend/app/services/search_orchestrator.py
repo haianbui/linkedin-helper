@@ -49,10 +49,12 @@ class SearchOrchestrator:
         decomposer: QueryDecomposer,
         evaluator: ProfileEvaluator,
         registry: ProviderRegistry,
+        database=None,
     ) -> None:
         self.decomposer = decomposer
         self.evaluator = evaluator
         self.registry = registry
+        self.database = database
 
     async def execute_search(
         self,
@@ -66,7 +68,21 @@ class SearchOrchestrator:
             criteria = await self.decomposer.decompose(session.natural_query)
             session.criteria = criteria
 
+            # Persist query
+            if self.database:
+                await self.database.save_query(
+                    query_id=session.id,
+                    natural_query=session.natural_query,
+                    criteria_json=criteria.model_dump_json(),
+                    dimensions=criteria.scoring_dimensions,
+                    created_at=session.created_at.isoformat(),
+                )
+
             yield SSEEvent(event="criteria", data=criteria.model_dump_json())
+            yield SSEEvent(
+                event="dimensions",
+                data=json.dumps(criteria.scoring_dimensions),
+            )
             yield SSEEvent(
                 event="status",
                 data=f"Parsed: {len(criteria.job_titles)} titles, "
@@ -131,6 +147,15 @@ class SearchOrchestrator:
                 criteria=criteria,
                 original_query=session.natural_query,
             )
+
+            # Persist results
+            if self.database:
+                await self.database.save_full_results(
+                    session.id, evaluated, criteria.scoring_dimensions
+                )
+                await self.database.update_query_status(
+                    session.id, "completed", result_count=len(evaluated)
+                )
 
             # Phase 5: Stream results
             for ep in evaluated:
@@ -204,9 +229,26 @@ class SearchOrchestrator:
             batch_size=15,
         )
 
+        # Persist
+        if self.database:
+            await self.database.save_query(
+                query_id=session.id,
+                natural_query=query,
+                criteria_json=criteria.model_dump_json(),
+                dimensions=criteria.scoring_dimensions,
+                created_at=session.created_at.isoformat(),
+            )
+            await self.database.save_full_results(
+                session.id, evaluated, criteria.scoring_dimensions
+            )
+            await self.database.update_query_status(
+                session.id, "completed", result_count=len(evaluated)
+            )
+
         return {
             "session_id": session.id,
             "criteria": criteria.model_dump(),
+            "dimensions": criteria.scoring_dimensions,
             "results": [ep.model_dump() for ep in evaluated],
             "total": len(evaluated),
         }

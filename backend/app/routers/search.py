@@ -3,18 +3,21 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from app.dependencies import get_orchestrator
+from app.dependencies import get_database, get_orchestrator
 from app.models.search import SearchSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["search"])
 
-# In-memory stores (work for single-process; on serverless each request is self-contained via /search/stream)
+# In-memory stores (work for single-process; on serverless each request is self-contained)
 _sessions: dict[str, SearchSession] = {}
 _session_results: dict[str, list[dict]] = {}
 
@@ -51,17 +54,14 @@ async def stream_search(session_id: str, query: str = Query(default="")):
     if not session:
         if not query:
             raise HTTPException(status_code=404, detail="Session not found")
-        # Serverless mode: create session from query param
         session = SearchSession(id=session_id, natural_query=query)
 
     orchestrator = get_orchestrator()
-    collected_results: list[dict] = []
 
     async def event_generator():
         async for sse_event in orchestrator.execute_search(session):
             if sse_event.event == "result":
                 data = json.loads(sse_event.data)
-                collected_results.append(data)
                 _session_results.setdefault(session_id, []).append(data)
 
             yield {"event": sse_event.event, "data": sse_event.data}
@@ -71,14 +71,7 @@ async def stream_search(session_id: str, query: str = Query(default="")):
 
 @router.post("/search/run")
 async def run_search(req: SearchRequest):
-    """Synchronous search - runs full pipeline, returns JSON.
-    Works on serverless (no SSE, no shared state needed).
-    """
-    import logging
-    import traceback
-
-    logger = logging.getLogger(__name__)
-
+    """Synchronous search - runs full pipeline, returns JSON."""
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
@@ -88,13 +81,52 @@ async def run_search(req: SearchRequest):
             query=req.query.strip(),
             max_results=25,
         )
-        # Cache results for CSV export
         if "session_id" in result and "results" in result:
             _session_results[result["session_id"]] = result["results"]
         return result
     except Exception as e:
         logger.exception("Search run failed")
         return {"error": f"Search failed: {e}", "results": []}
+
+
+@router.get("/sessions")
+async def list_sessions():
+    """List recent searches from DB, fallback to in-memory."""
+    db = get_database()
+    queries = await db.list_queries(limit=20)
+    if queries:
+        return [
+            {
+                "id": q["id"],
+                "query": q["natural_query"],
+                "status": q["status"],
+                "result_count": q["result_count"],
+                "created_at": q["created_at"],
+            }
+            for q in queries
+        ]
+    # Fallback to in-memory
+    return [
+        {
+            "id": s.id,
+            "query": s.natural_query,
+            "status": s.status.value,
+            "result_count": s.result_count,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in sorted(_sessions.values(), key=lambda s: s.created_at, reverse=True)[:20]
+    ]
+
+
+@router.get("/sessions/{query_id}/results")
+async def get_saved_results(query_id: str):
+    """Load saved results for a past query from DB."""
+    db = get_database()
+    query = await db.get_query(query_id)
+    if not query:
+        raise HTTPException(status_code=404, detail="Query not found")
+    results = await db.get_query_results(query_id)
+    return {"query": query, "results": results}
 
 
 @router.get("/search/{session_id}/results")
@@ -112,23 +144,23 @@ async def get_results(session_id: str):
     }
 
 
-@router.get("/sessions")
-async def list_sessions():
-    return [
-        {
-            "id": s.id,
-            "query": s.natural_query,
-            "status": s.status.value,
-            "result_count": s.result_count,
-            "created_at": s.created_at.isoformat(),
-        }
-        for s in sorted(_sessions.values(), key=lambda s: s.created_at, reverse=True)[:20]
-    ]
-
-
 @router.get("/export/{session_id}/csv")
 async def export_csv(session_id: str):
-    results = _session_results.get(session_id, [])
+    """Export results as CSV. Try DB first, fallback to in-memory."""
+    db = get_database()
+    query_data = await db.get_query(session_id)
+
+    if query_data:
+        results = await db.get_query_results(session_id)
+        dim_names = [
+            query_data.get("dimension_1_name") or "Score 1",
+            query_data.get("dimension_2_name") or "Score 2",
+            query_data.get("dimension_3_name") or "Score 3",
+        ]
+    else:
+        results = _session_results.get(session_id, [])
+        dim_names = ["Score 1", "Score 2", "Score 3"]
+
     if not results:
         raise HTTPException(status_code=404, detail="No results found")
 
@@ -136,12 +168,15 @@ async def export_csv(session_id: str):
     writer = csv.writer(output)
     writer.writerow([
         "Rank", "Name", "LinkedIn URL", "Title", "Company",
-        "Location", "Match Score", "Match Summary", "Headline",
+        "Location", "Overall Score", dim_names[0], dim_names[1], dim_names[2],
+        "Match Summary", "Headline",
     ])
 
     for r in results:
         profile = r.get("profile", {})
         evaluation = r.get("evaluation", {})
+        sub_scores = evaluation.get("sub_scores", [])
+
         writer.writerow([
             r.get("rank", ""),
             profile.get("full_name", ""),
@@ -150,6 +185,9 @@ async def export_csv(session_id: str):
             profile.get("current_company", ""),
             profile.get("location", ""),
             evaluation.get("match_score", ""),
+            sub_scores[0].get("score", "") if len(sub_scores) > 0 else "",
+            sub_scores[1].get("score", "") if len(sub_scores) > 1 else "",
+            sub_scores[2].get("score", "") if len(sub_scores) > 2 else "",
             evaluation.get("summary", ""),
             profile.get("headline", ""),
         ])

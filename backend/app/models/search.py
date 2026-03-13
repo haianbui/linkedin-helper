@@ -41,6 +41,7 @@ class SearchCriteria(BaseModel):
     boolean_logic: str = ""
     search_strategies: list[SearchStrategy] = Field(default_factory=list)
     semantic_intent: str = ""
+    scoring_dimensions: list[str] = Field(default_factory=list)
 
 
 class SearchSession(BaseModel):

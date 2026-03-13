@@ -17,3 +17,18 @@ tbody tr.result-row:hover {
   background-color: #f8fafc;
   cursor: pointer;
 }
+
+/* Sortable headers */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s;
+}
+.sortable:hover {
+  background-color: #e5e7eb;
+}
+.sortable::after {
+  content: ' \2195';
+  font-size: 0.7em;
+  opacity: 0.4;
+}
